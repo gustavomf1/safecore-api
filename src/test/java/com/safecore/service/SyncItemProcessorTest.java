@@ -100,4 +100,34 @@ class SyncItemProcessorTest {
         verify(idempotenciaRepository).save(argThat(si ->
                 si.getLocalId().equals("local-novo") && si.getServerId().equals(novoServerId)));
     }
+
+    @Test
+    void deveLancarExcecaoComMensagemLegivel_quandoTipoNcComPayloadNcNulo() {
+        // Um item com tipo="NC" e nc=null passa pelo @Valid do controller
+        // (validação em campo null é um no-op), mas é incoerente: sem essa
+        // checagem explícita, o switch chama ncService.create(null), que
+        // costuma estourar NullPointerException com getMessage() == null,
+        // virando um SyncItemResult(status="ERRO", erro=null) sem informação
+        // nenhuma pro usuário.
+        SyncItemRequest item = new SyncItemRequest("local-3", "NC", null, null);
+
+        assertThatThrownBy(() -> itemProcessor.processarItem(item))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nc")
+                .hasMessageContaining("local-3");
+        verify(ncService, never()).create(any());
+        verify(idempotenciaRepository, never()).save(any());
+    }
+
+    @Test
+    void deveLancarExcecaoComMensagemLegivel_quandoTipoDesvioComPayloadDesvioNulo() {
+        SyncItemRequest item = new SyncItemRequest("local-4", "DESVIO", null, null);
+
+        assertThatThrownBy(() -> itemProcessor.processarItem(item))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("desvio")
+                .hasMessageContaining("local-4");
+        verify(desvioService, never()).create(any());
+        verify(idempotenciaRepository, never()).save(any());
+    }
 }

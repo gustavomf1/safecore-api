@@ -60,4 +60,100 @@ class SyncControllerTest {
                         .content(json))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @WithMockUser(roles = "ENGENHEIRO")
+    void deveRetornar400_quandoLocalIdEmBranco() throws Exception {
+        String json = """
+            {
+              "items": [
+                {
+                  "localId": "",
+                  "tipo": "NC",
+                  "nc": {
+                    "estabelecimentoId": "%s",
+                    "titulo": "Titulo",
+                    "localizacaoId": "%s",
+                    "severidade": 3,
+                    "probabilidade": 2,
+                    "empresaContratadaId": "%s",
+                    "normaIds": [],
+                    "emailsManuais": [],
+                    "emailsPadraoExcluidos": []
+                  }
+                }
+              ]
+            }
+            """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/sync/ocorrencias")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ENGENHEIRO")
+    void deveRetornar400_quandoTipoNulo() throws Exception {
+        String json = """
+            {
+              "items": [
+                {
+                  "localId": "%s",
+                  "tipo": null,
+                  "nc": {
+                    "estabelecimentoId": "%s",
+                    "titulo": "Titulo",
+                    "localizacaoId": "%s",
+                    "severidade": 3,
+                    "probabilidade": 2,
+                    "empresaContratadaId": "%s",
+                    "normaIds": [],
+                    "emailsManuais": [],
+                    "emailsPadraoExcluidos": []
+                  }
+                }
+              ]
+            }
+            """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/sync/ocorrencias")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ENGENHEIRO")
+    void deveRetornar400_quandoLocalIdNaoEhUuidValido() throws Exception {
+        String json = """
+            {
+              "items": [
+                {
+                  "localId": "nao-sou-um-uuid",
+                  "tipo": "NC",
+                  "nc": {
+                    "estabelecimentoId": "%s",
+                    "titulo": "Titulo",
+                    "localizacaoId": "%s",
+                    "severidade": 3,
+                    "probabilidade": 2,
+                    "empresaContratadaId": "%s",
+                    "normaIds": [],
+                    "emailsManuais": [],
+                    "emailsPadraoExcluidos": []
+                  }
+                }
+              ]
+            }
+            """.formatted(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(post("/api/sync/ocorrencias")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest());
+    }
 }
