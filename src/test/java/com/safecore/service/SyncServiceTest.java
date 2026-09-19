@@ -1,9 +1,9 @@
 package com.safecore.service;
 
-import com.safecore.dto.request.*;
-import com.safecore.dto.response.*;
-import com.safecore.entity.SyncIdempotencia;
-import com.safecore.repository.SyncIdempotenciaRepository;
+import com.safecore.dto.request.SyncBatchRequest;
+import com.safecore.dto.request.SyncItemRequest;
+import com.safecore.dto.response.SyncBatchResponse;
+import com.safecore.dto.response.SyncItemResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -11,94 +11,33 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SyncServiceTest {
 
-    @Mock NaoConformidadeService ncService;
-    @Mock DesvioService desvioService;
-    @Mock SyncIdempotenciaRepository idempotenciaRepository;
+    @Mock SyncItemProcessor itemProcessor;
     @InjectMocks SyncService syncService;
 
     @Test
-    void deveRetornarCRIADO_quandoNcProcessadaComSucesso() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", null, "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), null);
-        SyncItemRequest item = new SyncItemRequest("local-1", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
+    void deveDelegarProcessamentoDeCadaItemAoSyncItemProcessor() {
+        SyncItemRequest item1 = new SyncItemRequest("local-1", "NC", null, null);
+        SyncItemRequest item2 = new SyncItemRequest("local-2", "DESVIO", null, null);
+        SyncBatchRequest batch = new SyncBatchRequest(List.of(item1, item2));
 
-        NaoConformidadeResponse mockResponse = mock(NaoConformidadeResponse.class);
-        when(mockResponse.id()).thenReturn(UUID.randomUUID());
-        when(ncService.create(any())).thenReturn(mockResponse);
+        SyncItemResult result1 = new SyncItemResult("local-1", UUID.randomUUID(), "CRIADO", null);
+        SyncItemResult result2 = new SyncItemResult("local-2", UUID.randomUUID(), "CRIADO", null);
+        when(itemProcessor.processarItem(item1)).thenReturn(result1);
+        when(itemProcessor.processarItem(item2)).thenReturn(result2);
 
-        SyncBatchResponse result = syncService.processar(batch);
+        SyncBatchResponse response = syncService.processar(batch);
 
-        assertThat(result.results()).hasSize(1);
-        assertThat(result.results().get(0).status()).isEqualTo("CRIADO");
-        assertThat(result.results().get(0).localId()).isEqualTo("local-1");
-        assertThat(result.results().get(0).serverId()).isNotNull();
-    }
-
-    @Test
-    void deveRetornarERRO_quandoNcLancaExcecao() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", null, "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), null);
-        SyncItemRequest item = new SyncItemRequest("local-2", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
-
-        when(ncService.create(any())).thenThrow(new RuntimeException("estabelecimento não encontrado"));
-
-        SyncBatchResponse result = syncService.processar(batch);
-
-        assertThat(result.results().get(0).status()).isEqualTo("ERRO");
-        assertThat(result.results().get(0).erro()).contains("estabelecimento não encontrado");
-    }
-
-    @Test
-    void deveRetornarServerIdExistente_semChamarCreateDeNovo_quandoLocalIdJaProcessado() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", UUID.randomUUID(), "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), UUID.randomUUID());
-        SyncItemRequest item = new SyncItemRequest("local-repetido", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
-
-        UUID serverIdExistente = UUID.randomUUID();
-        when(idempotenciaRepository.findById("local-repetido"))
-                .thenReturn(Optional.of(SyncIdempotencia.builder()
-                        .localId("local-repetido").tipo("NC").serverId(serverIdExistente).build()));
-
-        SyncBatchResponse result = syncService.processar(batch);
-
-        assertThat(result.results().get(0).status()).isEqualTo("CRIADO");
-        assertThat(result.results().get(0).serverId()).isEqualTo(serverIdExistente);
-        verify(ncService, never()).create(any());
-    }
-
-    @Test
-    void deveGravarIdempotencia_apenasQuandoCriaComSucesso() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", UUID.randomUUID(), "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), UUID.randomUUID());
-        SyncItemRequest item = new SyncItemRequest("local-novo", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
-
-        UUID novoServerId = UUID.randomUUID();
-        NaoConformidadeResponse mockResponse = mock(NaoConformidadeResponse.class);
-        when(mockResponse.id()).thenReturn(novoServerId);
-        when(idempotenciaRepository.findById("local-novo")).thenReturn(Optional.empty());
-        when(ncService.create(any())).thenReturn(mockResponse);
-
-        syncService.processar(batch);
-
-        verify(idempotenciaRepository).save(argThat(si ->
-                si.getLocalId().equals("local-novo") && si.getServerId().equals(novoServerId)));
+        assertThat(response.results()).containsExactly(result1, result2);
+        verify(itemProcessor).processarItem(item1);
+        verify(itemProcessor).processarItem(item2);
     }
 }
