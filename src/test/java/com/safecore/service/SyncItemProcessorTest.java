@@ -15,6 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -34,18 +35,22 @@ class SyncItemProcessorTest {
         SyncItemRequest item = new SyncItemRequest("local-1", "NC", ncReq, null);
 
         NaoConformidadeResponse mockResponse = mock(NaoConformidadeResponse.class);
-        when(mockResponse.id()).thenReturn(UUID.randomUUID());
+        UUID novoServerId = UUID.randomUUID();
+        when(mockResponse.id()).thenReturn(novoServerId);
         when(ncService.create(any())).thenReturn(mockResponse);
 
-        SyncItemResult result = itemProcessor.processarItem(item);
+        UUID serverId = itemProcessor.processarItem(item);
 
-        assertThat(result.status()).isEqualTo("CRIADO");
-        assertThat(result.localId()).isEqualTo("local-1");
-        assertThat(result.serverId()).isNotNull();
+        assertThat(serverId).isEqualTo(novoServerId);
     }
 
     @Test
-    void deveRetornarERRO_quandoNcLancaExcecao() {
+    void devePropagarExcecao_semCapturar_quandoNcLancaExcecao() {
+        // Round 2: processarItem NÃO pode capturar a exceção internamente.
+        // Ela precisa propagar para fora da fronteira @Transactional, para que
+        // o rollback complete de forma limpa antes de SyncService.processar()
+        // converter isso em SyncItemResult(ERRO). Ver SyncServiceTest para o
+        // teste do resultado "ERRO" no nível certo.
         NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
                 UUID.randomUUID(), "Titulo", null, "Desc", 3, 2,
                 null, null, false, List.of(), false, null, List.of(), List.of(), null);
@@ -53,10 +58,9 @@ class SyncItemProcessorTest {
 
         when(ncService.create(any())).thenThrow(new RuntimeException("estabelecimento não encontrado"));
 
-        SyncItemResult result = itemProcessor.processarItem(item);
-
-        assertThat(result.status()).isEqualTo("ERRO");
-        assertThat(result.erro()).contains("estabelecimento não encontrado");
+        assertThatThrownBy(() -> itemProcessor.processarItem(item))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("estabelecimento não encontrado");
         verify(idempotenciaRepository, never()).save(any());
     }
 
@@ -72,10 +76,9 @@ class SyncItemProcessorTest {
                 .thenReturn(Optional.of(SyncIdempotencia.builder()
                         .localId("local-repetido").tipo("NC").serverId(serverIdExistente).build()));
 
-        SyncItemResult result = itemProcessor.processarItem(item);
+        UUID serverId = itemProcessor.processarItem(item);
 
-        assertThat(result.status()).isEqualTo("CRIADO");
-        assertThat(result.serverId()).isEqualTo(serverIdExistente);
+        assertThat(serverId).isEqualTo(serverIdExistente);
         verify(ncService, never()).create(any());
     }
 
