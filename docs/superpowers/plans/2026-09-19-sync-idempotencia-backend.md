@@ -288,3 +288,110 @@ git add src/main/java/com/safecore/service/SyncService.java \
         src/test/java/com/safecore/service/SyncServiceTest.java
 git commit -m "feat: idempotência por localId no sync de NC/Desvio"
 ```
+
+---
+
+### Task 3: `@Valid` na cascata de `SyncItemRequest`
+
+**Files:**
+- Modify: `src/main/java/com/safecore/dto/request/SyncItemRequest.java`
+- Test: `src/test/java/com/safecore/controller/SyncBatchControllerTest.java` (criar se não existir — checar primeiro)
+
+**Interfaces:**
+- Consumes: nada de tasks anteriores — independente das Tasks 1/2, só corrige uma lacuna de validação já existente.
+
+`SyncBatchRequest.items` já é `@Valid` (confirmado em
+`SyncBatchRequest.java`) e `NaoConformidadeRequest`/`DesvioRequest` já têm
+`@NotNull`/`@NotBlank` nos campos certos — falta só a cascata de um nível:
+`SyncItemRequest.nc`/`.desvio` não são anotados `@Valid`, então esses
+`@NotNull` nunca são checados quando o payload chega via `/sync/batch`.
+
+- [ ] **Step 1: Checar se já existe teste de controller pra esse endpoint**
+
+Run: `cd "/home/mag/Documents/Java Projects/EngSeg/safecore-api" && find src/test/java/com/safecore/controller -iname "SyncBatchControllerTest.java" -o -iname "SyncControllerTest.java"`
+
+Se não existir nenhum, criar `src/test/java/com/safecore/controller/SyncControllerTest.java`
+testando `SyncController` (o de `com.safecore.controller`, que expõe
+`/api/sync/ocorrencias`) com `@WebMvcTest(SyncController.class)` — mesmo
+padrão que outros controllers desse pacote já devem usar (checar um
+exemplo existente em `src/test/java/com/safecore/controller/` antes de
+escrever, pra usar o mesmo estilo de `MockMvc`/`@MockBean`).
+
+- [ ] **Step 2: Escrever o teste que falha — payload de NC sem `localizacaoId` retorna 400**
+
+```java
+@Test
+void deveRetornar400_quandoNcDoBatchTemLocalizacaoIdNula() throws Exception {
+    String json = """
+        {
+          "items": [
+            {
+              "localId": "local-1",
+              "tipo": "NC",
+              "nc": {
+                "estabelecimentoId": "%s",
+                "titulo": "Titulo",
+                "localizacaoId": null,
+                "empresaContratadaId": "%s",
+                "normaIds": [],
+                "emailsManuais": [],
+                "emailsPadraoExcluidos": []
+              }
+            }
+          ]
+        }
+        """.formatted(UUID.randomUUID(), UUID.randomUUID());
+
+    mockMvc.perform(post("/api/sync/ocorrencias")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(json))
+        .andExpect(status().isBadRequest());
+}
+```
+
+Adaptar ao estilo exato do `MockMvc`/setup já usado nos outros
+`*ControllerTest.java` do pacote (nome do bean mockado de
+`SyncService`, imports de `MockMvcRequestBuilders`/`MockMvcResultMatchers`
+estáticos, etc — copiar o cabeçalho de um teste de controller existente).
+
+- [ ] **Step 3: Rodar e confirmar que falha (retorna 200, não 400)**
+
+Run: `mvn test -Dtest=SyncControllerTest -q`
+Expected: FAIL — sem `@Valid`, o `NaoConformidadeService.create()` é
+chamado (ou lança exceção capturada pelo `try/catch` do `SyncService`, que
+devolve `200` com item `ERRO` dentro do corpo, não um `400` HTTP).
+
+- [ ] **Step 4: Adicionar `@Valid`**
+
+```java
+// src/main/java/com/safecore/dto/request/SyncItemRequest.java
+package com.safecore.dto.request;
+
+import jakarta.validation.Valid;
+
+public record SyncItemRequest(
+        String localId,
+        String tipo,
+        @Valid NaoConformidadeRequest nc,
+        @Valid DesvioRequest desvio
+) {}
+```
+
+- [ ] **Step 5: Rodar de novo, confirmar que passa**
+
+Run: `mvn test -Dtest=SyncControllerTest -q`
+Expected: PASS.
+
+- [ ] **Step 6: Rodar a suíte inteira pra garantir que nada quebrou**
+
+Run: `mvn test -q`
+Expected: PASS (nenhuma regressão nos testes existentes de `SyncServiceTest`
+ou de outros controllers).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/main/java/com/safecore/dto/request/SyncItemRequest.java \
+        src/test/java/com/safecore/controller/SyncControllerTest.java
+git commit -m "fix: valida nc/desvio aninhados no payload de /sync/batch"
+```
