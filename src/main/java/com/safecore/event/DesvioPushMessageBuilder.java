@@ -47,19 +47,18 @@ public class DesvioPushMessageBuilder {
                 tipo,
                 desvio.getId(),
                 List.copyOf(destinatarios),
-                montarTitulo(tipo),
+                montarTitulo(desvio),
                 montarCorpo(desvio, tipo)
         );
     }
 
-    private String montarTitulo(String tipo) {
-        return switch (tipo) {
-            case "DESVIO_ATIVADO" -> "EngSeg — Desvio ativado";
-            case "DESVIO_TRATATIVA_SUBMETIDA" -> "EngSeg — Tratativa submetida";
-            case "DESVIO_APROVADO" -> "EngSeg — Desvio aprovado";
-            case "DESVIO_REPROVADO" -> "EngSeg — Desvio reprovado";
-            default -> "EngSeg — Desvio";
-        };
+    private String montarTitulo(Desvio desvio) {
+        String codigo = formatCodigo(desvio.getNumeroSequencial());
+        return codigo == null ? desvio.getTitulo() : codigo + " - " + desvio.getTitulo();
+    }
+
+    private String formatCodigo(Long numeroSequencial) {
+        return numeroSequencial == null ? null : "DESV-" + String.format("%04d", numeroSequencial);
     }
 
     private String montarCorpo(Desvio desvio, String tipo) {

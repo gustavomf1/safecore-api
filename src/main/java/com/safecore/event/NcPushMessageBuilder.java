@@ -61,9 +61,18 @@ public class NcPushMessageBuilder {
             return null;
         }
 
-        String titulo = "EngSeg — " + nc.getTitulo();
+        String titulo = montarTitulo(nc);
         String corpo = montarCorpo(nc, tipo, comentario);
         return new NcKafkaEvent(UUID.randomUUID(), tipo, nc.getId(), List.copyOf(destinatarios), titulo, corpo);
+    }
+
+    private String montarTitulo(NaoConformidade nc) {
+        String codigo = formatCodigo(nc.getNumeroSequencial());
+        return codigo == null ? nc.getTitulo() : codigo + " - " + nc.getTitulo();
+    }
+
+    private String formatCodigo(Long numeroSequencial) {
+        return numeroSequencial == null ? null : "NC-" + String.format("%04d", numeroSequencial);
     }
 
     private void addIfPresent(Set<UUID> destinatarios, UUID id) {

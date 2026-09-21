@@ -36,9 +36,26 @@ class NcPushMessageBuilderTest {
         nc = new NaoConformidade();
         nc.setId(UUID.randomUUID());
         nc.setTitulo("Vazamento na linha 3");
+        nc.setNumeroSequencial(7L);
         nc.setUsuarioCriacao(criador);
         nc.setResponsavelNc(responsavelNc);
         nc.setResponsavelTratativa(responsavelTratativa);
+    }
+
+    @Test
+    void titulo_usaCodigoDaNcEmVezDaMarcaEngSeg() {
+        NcKafkaEvent evento = builder.resolver(nc,
+                StatusNaoConformidade.ABERTA, StatusNaoConformidade.AGUARDANDO_TRATATIVA, null);
+        assertThat(evento.titulo()).isEqualTo("NC-0007 - Vazamento na linha 3");
+        assertThat(evento.titulo()).doesNotContain("EngSeg");
+    }
+
+    @Test
+    void titulo_semNumeroSequencial_caiSoParaOTituloDaNc() {
+        nc.setNumeroSequencial(null);
+        NcKafkaEvent evento = builder.resolver(nc,
+                StatusNaoConformidade.ABERTA, StatusNaoConformidade.AGUARDANDO_TRATATIVA, null);
+        assertThat(evento.titulo()).isEqualTo("Vazamento na linha 3");
     }
 
     @Test

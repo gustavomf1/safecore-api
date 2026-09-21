@@ -32,6 +32,7 @@ class NcExpirySchedulerTest {
         NaoConformidade nc = new NaoConformidade();
         nc.setId(UUID.randomUUID());
         nc.setTitulo("NC Vencendo");
+        nc.setNumeroSequencial(7L);
         nc.setDataLimiteResolucao(LocalDate.now().plusDays(10));
 
         when(ncRepository.findAtivasByDataLimiteResolucao(LocalDate.now().plusDays(10)))
@@ -43,6 +44,7 @@ class NcExpirySchedulerTest {
         verify(kafkaTemplate).send(eq("engseg.expiry.alerts"), captor.capture());
         assertThat(captor.getValue().ncId()).isEqualTo(nc.getId());
         assertThat(captor.getValue().diasRestantes()).isEqualTo(10);
+        assertThat(captor.getValue().codigo()).isEqualTo("NC-0007");
     }
 
     @Test
