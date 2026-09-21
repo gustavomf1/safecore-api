@@ -30,6 +30,7 @@ class DesvioPushMessageBuilderTest {
         desvio = new Desvio();
         desvio.setId(UUID.randomUUID());
         desvio.setTitulo("Desvio de Teste");
+        desvio.setNumeroSequencial(4L);
         desvio.setUsuarioCriacao(criador);
         desvio.setResponsavelDesvio(responsavelDesvio);
         desvio.setResponsavelTratativa(responsavelTratativa);
@@ -44,8 +45,15 @@ class DesvioPushMessageBuilderTest {
         assertThat(event.destinatarios()).containsExactly(responsavelTratativaId, responsavelDesvioId);
         assertThat(event.eventId()).isNotNull();
         assertThat(event.desvioId()).isEqualTo(desvio.getId());
-        assertThat(event.titulo()).isEqualTo("EngSeg — Desvio ativado");
+        assertThat(event.titulo()).isEqualTo("DESV-0004 - Desvio de Teste");
         assertThat(event.corpo()).contains("Desvio de Teste");
+    }
+
+    @Test
+    void titulo_semNumeroSequencial_caiSoParaOTituloDoDesvio() {
+        desvio.setNumeroSequencial(null);
+        DesvioKafkaEvent event = builder.resolver(desvio, ABERTO, AGUARDANDO_TRATATIVA);
+        assertThat(event.titulo()).isEqualTo("Desvio de Teste");
     }
 
     @Test

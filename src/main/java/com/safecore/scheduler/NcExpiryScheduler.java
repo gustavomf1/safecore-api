@@ -34,8 +34,12 @@ public class NcExpiryScheduler {
             UUID responsavelId = nc.getResponsavelTratativa() != null
                     ? nc.getResponsavelTratativa().getId() : null;
             ExpiryAlertEvent event = new ExpiryAlertEvent(
-                    nc.getId(), nc.getTitulo(), DIAS_ANTECEDENCIA, responsavelId);
+                    nc.getId(), nc.getTitulo(), formatCodigo(nc.getNumeroSequencial()), DIAS_ANTECEDENCIA, responsavelId);
             kafkaTemplate.send(TOPIC, event);
         }
+    }
+
+    private String formatCodigo(Long numeroSequencial) {
+        return numeroSequencial == null ? null : "NC-" + String.format("%04d", numeroSequencial);
     }
 }
