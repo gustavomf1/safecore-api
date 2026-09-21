@@ -1,7 +1,9 @@
 package com.safecore.service;
 
-import com.safecore.dto.request.*;
-import com.safecore.dto.response.*;
+import com.safecore.dto.request.SyncBatchRequest;
+import com.safecore.dto.request.SyncItemRequest;
+import com.safecore.dto.response.SyncBatchResponse;
+import com.safecore.dto.response.SyncItemResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -12,49 +14,61 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SyncServiceTest {
 
-    @Mock NaoConformidadeService ncService;
-    @Mock DesvioService desvioService;
+    @Mock SyncItemProcessor itemProcessor;
     @InjectMocks SyncService syncService;
 
     @Test
-    void deveRetornarCRIADO_quandoNcProcessadaComSucesso() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", null, "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), null);
-        SyncItemRequest item = new SyncItemRequest("local-1", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
+    void deveDelegarProcessamentoDeCadaItemAoSyncItemProcessor() {
+        SyncItemRequest item1 = new SyncItemRequest("local-1", "NC", null, null);
+        SyncItemRequest item2 = new SyncItemRequest("local-2", "DESVIO", null, null);
+        SyncBatchRequest batch = new SyncBatchRequest(List.of(item1, item2));
 
-        NaoConformidadeResponse mockResponse = mock(NaoConformidadeResponse.class);
-        when(mockResponse.id()).thenReturn(UUID.randomUUID());
-        when(ncService.create(any())).thenReturn(mockResponse);
+        UUID serverId1 = UUID.randomUUID();
+        UUID serverId2 = UUID.randomUUID();
+        when(itemProcessor.processarItem(item1)).thenReturn(serverId1);
+        when(itemProcessor.processarItem(item2)).thenReturn(serverId2);
 
-        SyncBatchResponse result = syncService.processar(batch);
+        SyncBatchResponse response = syncService.processar(batch);
 
-        assertThat(result.results()).hasSize(1);
-        assertThat(result.results().get(0).status()).isEqualTo("CRIADO");
-        assertThat(result.results().get(0).localId()).isEqualTo("local-1");
-        assertThat(result.results().get(0).serverId()).isNotNull();
+        assertThat(response.results()).containsExactly(
+                new SyncItemResult("local-1", serverId1, "CRIADO", null),
+                new SyncItemResult("local-2", serverId2, "CRIADO", null));
+        verify(itemProcessor).processarItem(item1);
+        verify(itemProcessor).processarItem(item2);
     }
 
     @Test
-    void deveRetornarERRO_quandoNcLancaExcecao() {
-        NaoConformidadeRequest ncReq = new NaoConformidadeRequest(
-                UUID.randomUUID(), "Titulo", null, "Desc", 3, 2,
-                null, null, false, List.of(), false, null, List.of(), List.of(), null);
-        SyncItemRequest item = new SyncItemRequest("local-2", "NC", ncReq, null);
-        SyncBatchRequest batch = new SyncBatchRequest(List.of(item));
+    void deveIsolarErroDeUmItem_semInterromperOProcessamentoDosDemais_quandoItemProcessorLancaExcecao() {
+        // Round 2 (Finding Critical): o try/catch mora aqui, FORA da fronteira
+        // @Transactional de SyncItemProcessor.processarItem, exatamente para
+        // que uma falha em um item não derrube o restante do batch. Este teste
+        // cobre a semântica de resultado (ERRO isolado a um item, batch
+        // continua); NÃO substitui a verificação de que o rollback da
+        // transação de fato completa sem UnexpectedRollbackException — isso
+        // só é observável com um PlatformTransactionManager real, fora do
+        // alcance do Mockito (ver SyncItemProcessorIntegrationTest e a seção
+        // de limitações no relatório).
+        SyncItemRequest item1 = new SyncItemRequest("local-falha", "NC", null, null);
+        SyncItemRequest item2 = new SyncItemRequest("local-ok", "DESVIO", null, null);
+        SyncBatchRequest batch = new SyncBatchRequest(List.of(item1, item2));
 
-        when(ncService.create(any())).thenThrow(new RuntimeException("estabelecimento não encontrado"));
+        UUID serverId2 = UUID.randomUUID();
+        when(itemProcessor.processarItem(item1))
+                .thenThrow(new RuntimeException("estabelecimento não encontrado"));
+        when(itemProcessor.processarItem(item2)).thenReturn(serverId2);
 
-        SyncBatchResponse result = syncService.processar(batch);
+        SyncBatchResponse response = syncService.processar(batch);
 
-        assertThat(result.results().get(0).status()).isEqualTo("ERRO");
-        assertThat(result.results().get(0).erro()).contains("estabelecimento não encontrado");
+        assertThat(response.results()).containsExactly(
+                new SyncItemResult("local-falha", null, "ERRO", "estabelecimento não encontrado"),
+                new SyncItemResult("local-ok", serverId2, "CRIADO", null));
+        verify(itemProcessor).processarItem(item1);
+        verify(itemProcessor).processarItem(item2);
     }
 }

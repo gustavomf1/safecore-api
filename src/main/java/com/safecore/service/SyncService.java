@@ -17,29 +17,26 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SyncService {
 
-    private final NaoConformidadeService ncService;
-    private final DesvioService desvioService;
+    private final SyncItemProcessor itemProcessor;
 
     public SyncBatchResponse processar(SyncBatchRequest batch) {
         List<SyncItemResult> results = new ArrayList<>();
         for (SyncItemRequest item : batch.items()) {
-            results.add(processarItem(item));
+            // O try/catch fica FORA da fronteira transacional de processarItem
+            // de propósito: assim, quando create() falha, o rollback da
+            // transação daquele item completa de forma limpa (a exceção já
+            // saiu do método @Transactional) antes de virar um resultado
+            // "ERRO" aqui — isolando a falha a este item, sem derrubar o
+            // restante do batch com UnexpectedRollbackException.
+            try {
+                UUID serverId = itemProcessor.processarItem(item);
+                results.add(new SyncItemResult(item.localId(), serverId, "CRIADO", null));
+            } catch (Exception e) {
+                log.warn("SyncService: erro ao processar localId={} tipo={}: {}",
+                        item.localId(), item.tipo(), e.getMessage());
+                results.add(new SyncItemResult(item.localId(), null, "ERRO", e.getMessage()));
+            }
         }
         return new SyncBatchResponse(results);
-    }
-
-    private SyncItemResult processarItem(SyncItemRequest item) {
-        try {
-            UUID serverId = switch (item.tipo()) {
-                case "NC" -> ncService.create(item.nc()).id();
-                case "DESVIO" -> desvioService.create(item.desvio()).id();
-                default -> throw new IllegalArgumentException("tipo desconhecido: " + item.tipo());
-            };
-            return new SyncItemResult(item.localId(), serverId, "CRIADO", null);
-        } catch (Exception e) {
-            log.warn("SyncService: erro ao processar localId={} tipo={}: {}",
-                    item.localId(), item.tipo(), e.getMessage());
-            return new SyncItemResult(item.localId(), null, "ERRO", e.getMessage());
-        }
     }
 }
