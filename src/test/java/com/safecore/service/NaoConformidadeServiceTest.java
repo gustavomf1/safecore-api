@@ -149,6 +149,34 @@ class NaoConformidadeServiceTest {
     }
 
     @Test
+    void create_naoDefineDataLimiteResolucao() {
+        UUID estId = UUID.randomUUID();
+        UUID empresaId = UUID.randomUUID();
+        Estabelecimento est = new Estabelecimento();
+        est.setId(estId);
+        Empresa empresaContratada = new Empresa();
+        empresaContratada.setId(empresaId);
+
+        NaoConformidadeRequest request = new NaoConformidadeRequest(
+                estId, "NC sem prazo", null, null, null, null,
+                null, null, false, null, false, null, List.of(), List.of(), empresaId
+        );
+
+        when(estabelecimentoRepository.findById(estId)).thenReturn(Optional.of(est));
+        when(empresaRepository.findById(empresaId)).thenReturn(Optional.of(empresaContratada));
+
+        NaoConformidade saved = buildNc(StatusNaoConformidade.ABERTA);
+        mockToResponseDeps(saved);
+        when(naoConformidadeRepository.findById(any())).thenReturn(Optional.of(saved));
+
+        service.create(request);
+
+        ArgumentCaptor<NaoConformidade> captor = ArgumentCaptor.forClass(NaoConformidade.class);
+        verify(naoConformidadeRepository).save(captor.capture());
+        assertThat(captor.getValue().getDataLimiteResolucao()).isNull();
+    }
+
+    @Test
     void findAll_quandoExterno_retornaApenasNcsOndeEhResponsavelTratativa() {
         UUID estId = UUID.randomUUID();
         Usuario externo = Usuario.builder().id(UUID.randomUUID()).perfil(PerfilUsuario.EXTERNO).build();
@@ -483,5 +511,55 @@ class NaoConformidadeServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(nc.getStatus()).isEqualTo(StatusNaoConformidade.AGUARDANDO_TRATATIVA);
+    }
+
+    @Test
+    void ativar_defineDataLimiteResolucaoParaHojeMais30Dias() {
+        Usuario criador = Usuario.builder().id(UUID.randomUUID()).perfil(PerfilUsuario.TECNICO).build();
+        Usuario responsavel = Usuario.builder().id(UUID.randomUUID()).perfil(PerfilUsuario.ENGENHEIRO).build();
+        Norma norma = new Norma();
+        norma.setId(UUID.randomUUID());
+
+        NaoConformidade nc = buildNc(StatusNaoConformidade.ABERTA);
+        nc.setDataLimiteResolucao(null);
+        nc.setUsuarioCriacao(criador);
+        nc.setSeveridade(3);
+        nc.setProbabilidade(2);
+        nc.setResponsavelTratativa(responsavel);
+        nc.setResponsavelNc(responsavel);
+        nc.setNormas(List.of(norma));
+
+        when(naoConformidadeRepository.findById(ncId)).thenReturn(Optional.of(nc));
+        when(securityHelper.getUsuarioLogado()).thenReturn(criador);
+        mockToResponseDeps(nc);
+
+        service.ativar(ncId);
+
+        assertThat(nc.getDataLimiteResolucao()).isEqualTo(LocalDate.now().plusDays(30));
+    }
+
+    @Test
+    void ativar_resetaVencidaParaN() {
+        Usuario criador = Usuario.builder().id(UUID.randomUUID()).perfil(PerfilUsuario.TECNICO).build();
+        Usuario responsavel = Usuario.builder().id(UUID.randomUUID()).perfil(PerfilUsuario.ENGENHEIRO).build();
+        Norma norma = new Norma();
+        norma.setId(UUID.randomUUID());
+
+        NaoConformidade nc = buildNc(StatusNaoConformidade.ABERTA);
+        nc.setVencida("S");
+        nc.setUsuarioCriacao(criador);
+        nc.setSeveridade(3);
+        nc.setProbabilidade(2);
+        nc.setResponsavelTratativa(responsavel);
+        nc.setResponsavelNc(responsavel);
+        nc.setNormas(List.of(norma));
+
+        when(naoConformidadeRepository.findById(ncId)).thenReturn(Optional.of(nc));
+        when(securityHelper.getUsuarioLogado()).thenReturn(criador);
+        mockToResponseDeps(nc);
+
+        service.ativar(ncId);
+
+        assertThat(nc.getVencida()).isEqualTo("N");
     }
 }

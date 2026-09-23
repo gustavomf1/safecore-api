@@ -170,7 +170,6 @@ public class NaoConformidadeService {
         if (responsavelTratativa != null) nc.setResponsavelTratativa(responsavelTratativa);
         if (responsavelNc != null) nc.setResponsavelNc(responsavelNc);
         nc.setEmpresaContratada(empresaContratada);
-        nc.setDataLimiteResolucao(now.toLocalDate().plusDays(30));
         nc.setStatus(StatusNaoConformidade.ABERTA);
         nc.setAtividades(new ArrayList<>());
         nc.setHistorico(new ArrayList<>());
@@ -339,6 +338,8 @@ public class NaoConformidadeService {
                     "Preencha os campos obrigatórios antes de enviar para o Plano de Ação.", camposFaltantes);
         }
 
+        nc.setDataLimiteResolucao(LocalDate.now().plusDays(30));
+        nc.setVencida("N");
         nc.setStatus(StatusNaoConformidade.AGUARDANDO_TRATATIVA);
         NaoConformidade saved = naoConformidadeRepository.save(nc);
 
